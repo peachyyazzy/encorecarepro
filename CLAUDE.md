@@ -40,6 +40,8 @@ Turborepo monorepo with:
 
 10. **Recurring schedules** are templates, not trips. A cron/edge function materializes trips N days ahead and updates `last_generated_through`. Don't insert trips directly from the `recurring_schedules` row.
 
+11. **Stripe is the source of truth for payment state, not the client.** Client calls kick off Checkout/PaymentSheet, but the trip's `payment_status` only flips via `/api/webhooks/stripe`. Never mark a trip `paid` from a client-side callback. Every payment-creating call uses an idempotency key (`checkout:<tripId>`, `pi:<tripId>`) so retries are safe.
+
 ## Before committing
 
 - `pnpm typecheck` across all workspaces

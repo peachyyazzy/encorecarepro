@@ -33,7 +33,7 @@ supabase/
 - Expo CLI via `npx expo`
 - EAS CLI for app-store builds (`npm i -g eas-cli`)
 - A Supabase project (with a signed BAA — see Compliance below)
-- Stripe account
+- Stripe account (needs a BAA — Stripe offers it on request for healthcare customers). Add a webhook endpoint pointing to `https://<your-domain>/api/webhooks/stripe` and subscribe to: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, `checkout.session.completed`, `charge.refunded`.
 - Google Maps API key — enable **Places API**, **Maps JavaScript API**, and **Distance Matrix API**. Create three restricted keys:
   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — HTTP-referrer-restricted to your web domains
   - `GOOGLE_MAPS_SERVER_KEY` — IP-restricted (or unrestricted, server-side only)
@@ -82,7 +82,7 @@ pnpm mobile
 ### Next up (v1 — what you need before launching)
 1. ~~**Google Places autocomplete** for address input + **Distance Matrix** to compute loaded miles.~~ ✅ Shipped.
 2. ~~**Real pricing quotes** based on actual distance.~~ ✅ Shipped.
-3. **Stripe Checkout** for private-pay trips; webhook updates invoice status.
+3. ~~**Stripe Checkout** for private-pay trips; webhook updates trip status.~~ ✅ Shipped (web Checkout + mobile PaymentSheet + `payment_intent.*` webhook handler).
 4. **Driver dispatch app** (same Expo codebase, role-gated) — accept trip, en-route, arrived, start, complete.
 5. **Recurring schedule trip generator** — cron/edge function that materializes upcoming trips from `recurring_schedules`.
 6. **PDF invoice / superbill generator** — server-side React PDF rendering, stored in Supabase Storage.

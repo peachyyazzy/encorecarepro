@@ -4,8 +4,9 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useStripe } from "@stripe/stripe-react-native";
 import { supabase } from "../../lib/supabase";
-import { fetchDistance } from "../../lib/api";
+import { fetchDistance, createTripPaymentIntent } from "../../lib/api";
 import PlacesAutocomplete from "../../components/PlacesAutocomplete";
 import { billing, MOBILITY_LABELS, type PayerType, geo } from "@encorecare/shared";
 
@@ -13,6 +14,7 @@ type Mobility = keyof typeof MOBILITY_LABELS;
 
 export default function NewBookingScreen() {
   const router = useRouter();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [loading, setLoading] = useState(false);
 
   const [pickup, setPickup] = useState<geo.ResolvedAddress | null>(null);
@@ -118,32 +120,94 @@ export default function NewBookingScreen() {
     const pickupId = await insertAddress(pickup);
     const dropoffId = await insertAddress(dropoff);
 
-    const { error } = await supabase.from("trips").insert({
-      patient_id: patient.id,
-      booked_by_user_id: user.id,
-      trip_type: roundTrip ? "round_trip" : "one_way",
-      status: "requested",
-      scheduled_pickup_at: new Date(dateTime).toISOString(),
-      pickup_address_id: pickupId,
-      dropoff_address_id: dropoffId,
-      mobility,
-      needs_attendant: needsAttendant,
-      payer_type: payerType,
-      hcpcs_code: billing.defaultHcpcsForMobility(mobility),
-      loaded_miles: distance?.distanceMiles ?? null,
-      base_fare_cents: estimate?.baseFareCents ?? null,
-      mileage_fare_cents: estimate?.mileageFareCents ?? null,
-      total_fare_cents: estimate?.totalCents ?? null,
-    });
+    const { data: trip, error } = await supabase
+      .from("trips")
+      .insert({
+        patient_id: patient.id,
+        booked_by_user_id: user.id,
+        trip_type: roundTrip ? "round_trip" : "one_way",
+        status: "requested",
+        scheduled_pickup_at: new Date(dateTime).toISOString(),
+        pickup_address_id: pickupId,
+        dropoff_address_id: dropoffId,
+        mobility,
+        needs_attendant: needsAttendant,
+        payer_type: payerType,
+        hcpcs_code: billing.defaultHcpcsForMobility(mobility),
+        loaded_miles: distance?.distanceMiles ?? null,
+        base_fare_cents: estimate?.baseFareCents ?? null,
+        mileage_fare_cents: estimate?.mileageFareCents ?? null,
+        total_fare_cents: estimate?.totalCents ?? null,
+      })
+      .select("id")
+      .single();
 
-    setLoading(false);
-    if (error) {
-      Alert.alert("Booking failed", error.message);
+    if (error || !trip) {
+      setLoading(false);
+      Alert.alert("Booking failed", error?.message ?? "unknown error");
       return;
     }
+
+    // Private-pay trips pay now via Stripe PaymentSheet. Other payer types
+    // skip straight to the trips list — we bill the payer later.
+    if (payerType === "private_pay" && estimate && estimate.totalCents > 0) {
+      const ok = await runPaymentSheet(trip.id as string);
+      setLoading(false);
+      if (ok) {
+        Alert.alert("Payment received", "Your trip is scheduled.", [
+          { text: "OK", onPress: () => router.replace("/(app)/trips") },
+        ]);
+      } else {
+        Alert.alert(
+          "Payment incomplete",
+          "Your trip is saved. Tap it from Trips to finish paying.",
+          [{ text: "OK", onPress: () => router.replace("/(app)/trips") }],
+        );
+      }
+      return;
+    }
+
+    setLoading(false);
     Alert.alert("Trip booked", "We'll assign a driver and text you an update.", [
       { text: "OK", onPress: () => router.replace("/(app)/trips") },
     ]);
+  }
+
+  async function runPaymentSheet(tripId: string): Promise<boolean> {
+    try {
+      const params = await createTripPaymentIntent(tripId);
+      const init = await initPaymentSheet({
+        merchantDisplayName: "Encore Care NEMT",
+        customerId: params.customer,
+        customerEphemeralKeySecret: params.ephemeralKey,
+        paymentIntentClientSecret: params.paymentIntent,
+        allowsDelayedPaymentMethods: false,
+        returnURL: "encorecare://pay/return",
+        applePay: process.env.EXPO_PUBLIC_APPLE_MERCHANT_ID
+          ? { merchantCountryCode: "US" }
+          : undefined,
+        googlePay: {
+          merchantCountryCode: "US",
+          currencyCode: "USD",
+          testEnv: __DEV__,
+        },
+      });
+      if (init.error) {
+        Alert.alert("Couldn't start checkout", init.error.message);
+        return false;
+      }
+      const result = await presentPaymentSheet();
+      if (result.error) {
+        if (result.error.code !== "Canceled") {
+          Alert.alert("Payment failed", result.error.message);
+        }
+        return false;
+      }
+      return true;
+    } catch (err) {
+      Alert.alert("Payment error", String(err));
+      return false;
+    }
   }
 
   return (

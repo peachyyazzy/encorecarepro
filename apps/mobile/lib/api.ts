@@ -26,3 +26,22 @@ export async function fetchDistance(
   if (!res.ok) throw new Error(`distance ${res.status}`);
   return res.json();
 }
+
+export interface PaymentIntentParams {
+  paymentIntent: string;
+  ephemeralKey: string;
+  customer: string;
+  publishableKey: string;
+}
+
+export async function createTripPaymentIntent(tripId: string): Promise<PaymentIntentParams> {
+  const res = await authedFetch("/api/payments/intent", {
+    method: "POST",
+    body: JSON.stringify({ tripId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `intent ${res.status}`);
+  }
+  return res.json();
+}

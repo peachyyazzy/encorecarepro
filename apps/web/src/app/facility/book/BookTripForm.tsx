@@ -111,13 +111,34 @@ export default function BookTripForm({ patients }: { patients: PatientOption[] }
       body: JSON.stringify(payload),
     });
 
-    setSubmitting(false);
     if (!res.ok) {
+      setSubmitting(false);
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "Something went wrong");
       return;
     }
     const { tripId } = await res.json();
+
+    // Private-pay trips pay now via Stripe Checkout; everything else skips
+    // straight to the trip detail page.
+    if (payerType === "private_pay") {
+      const checkout = await fetch("/api/payments/checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tripId }),
+      });
+      if (!checkout.ok) {
+        setSubmitting(false);
+        const body = await checkout.json().catch(() => ({}));
+        setError(body.error ?? "Couldn't start checkout");
+        return;
+      }
+      const { url } = await checkout.json();
+      window.location.href = url;
+      return;
+    }
+
+    setSubmitting(false);
     router.push(`/facility/trips/${tripId}`);
   }
 
