@@ -1,0 +1,26 @@
+{
+  "name": "encorecarepro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Encore Care NEMT — non-emergency medical transportation booking platform",
+  "packageManager": "pnpm@10.9.7",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "web": "pnpm --filter @encorecare/web dev",
+    "mobile": "pnpm --filter @encorecare/mobile start",
+    "db:types": "supabase gen types typescript --local > packages/database/src/generated.ts",
+    "db:reset": "supabase db reset",
+    "db:push": "supabase db push"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "prettier": "^3.4.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

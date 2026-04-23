@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Encore Care",
+    "slug": "encorecare",
+    "scheme": "encorecare",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "org.encorecare.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Used to set your pickup location and share live trip status with the dispatcher.",
+        "NSCameraUsageDescription": "Used to upload insurance cards and prescriptions for care-plan trips.",
+        "NSPhotoLibraryUsageDescription": "Used to select insurance cards and documents."
+      }
+    },
+    "android": {
+      "package": "org.encorecare.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1F6FEB"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
