@@ -34,7 +34,10 @@ supabase/
 - EAS CLI for app-store builds (`npm i -g eas-cli`)
 - A Supabase project (with a signed BAA — see Compliance below)
 - Stripe account
-- Google Maps API key (Places + Distance Matrix)
+- Google Maps API key — enable **Places API**, **Maps JavaScript API**, and **Distance Matrix API**. Create three restricted keys:
+  - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — HTTP-referrer-restricted to your web domains
+  - `GOOGLE_MAPS_SERVER_KEY` — IP-restricted (or unrestricted, server-side only)
+  - `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` — iOS bundle-ID + Android package-name restricted
 - Clearinghouse account (Office Ally, Availity, or Waystar) — only required once you start submitting claims
 
 ---
@@ -77,8 +80,8 @@ pnpm mobile
 - Supabase email/password auth on both apps; tokens stored in Keychain/Keystore via `expo-secure-store`
 
 ### Next up (v1 — what you need before launching)
-1. **Google Places autocomplete** for address input + **Distance Matrix** to compute loaded miles.
-2. **Real pricing quotes** based on actual distance.
+1. ~~**Google Places autocomplete** for address input + **Distance Matrix** to compute loaded miles.~~ ✅ Shipped.
+2. ~~**Real pricing quotes** based on actual distance.~~ ✅ Shipped.
 3. **Stripe Checkout** for private-pay trips; webhook updates invoice status.
 4. **Driver dispatch app** (same Expo codebase, role-gated) — accept trip, en-route, arrived, start, complete.
 5. **Recurring schedule trip generator** — cron/edge function that materializes upcoming trips from `recurring_schedules`.

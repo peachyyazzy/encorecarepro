@@ -17,6 +17,31 @@ export const addressSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+export const resolvedAddressSchema = z.object({
+  placeId: z.string().min(1),
+  formattedAddress: z.string().min(1),
+  line1: z.string().min(1),
+  line2: z.string().optional(),
+  city: z.string().min(1),
+  state: z.string().length(2),
+  postalCode: z.string().min(3),
+  country: z.string().length(2),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+});
+
+export const distanceQuerySchema = z.object({
+  origin: z.object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  }),
+  destination: z.object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  }),
+  departAt: z.coerce.date().optional(),
+});
+
 export const mobilitySchema = z.enum([
   "ambulatory",
   "wheelchair",

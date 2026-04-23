@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, Switch,
+  View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, Switch, ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../lib/supabase";
-import { billing, MOBILITY_LABELS, type PayerType } from "@encorecare/shared";
+import { fetchDistance } from "../../lib/api";
+import PlacesAutocomplete from "../../components/PlacesAutocomplete";
+import { billing, MOBILITY_LABELS, type PayerType, geo } from "@encorecare/shared";
 
 type Mobility = keyof typeof MOBILITY_LABELS;
 
@@ -13,28 +15,56 @@ export default function NewBookingScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  // For v1 we capture plain address strings. v2 will use Places autocomplete
-  // and Distance Matrix to compute loaded_miles and a real quote.
-  const [pickupAddress, setPickupAddress] = useState("");
-  const [dropoffAddress, setDropoffAddress] = useState("");
+  const [pickup, setPickup] = useState<geo.ResolvedAddress | null>(null);
+  const [dropoff, setDropoff] = useState<geo.ResolvedAddress | null>(null);
   const [dateTime, setDateTime] = useState("");
   const [mobility, setMobility] = useState<Mobility>("ambulatory");
   const [roundTrip, setRoundTrip] = useState(false);
   const [needsAttendant, setNeedsAttendant] = useState(false);
   const [payerType, setPayerType] = useState<PayerType>("private_pay");
+  const [distance, setDistance] = useState<geo.DistanceResult | null>(null);
+  const [distanceLoading, setDistanceLoading] = useState(false);
 
-  // Rough placeholder quote — replace with Distance Matrix call + pricing engine.
-  const estimate = billing.quotePrivatePay({
-    mobility,
-    loadedMiles: 8,
-    needsAttendant,
-    scheduledPickupAt: dateTime ? new Date(dateTime) : new Date(),
-    roundTrip,
-  });
+  useEffect(() => {
+    if (!pickup || !dropoff) {
+      setDistance(null);
+      return;
+    }
+    let cancelled = false;
+    setDistanceLoading(true);
+    fetchDistance(
+      { latitude: pickup.latitude, longitude: pickup.longitude },
+      { latitude: dropoff.latitude, longitude: dropoff.longitude },
+      dateTime ? new Date(dateTime) : undefined,
+    )
+      .then((d) => {
+        if (!cancelled) setDistance(d);
+      })
+      .catch(() => {
+        if (!cancelled) setDistance(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDistanceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pickup, dropoff, dateTime]);
+
+  const estimate =
+    distance && payerType === "private_pay"
+      ? billing.quotePrivatePay({
+          mobility,
+          loadedMiles: distance.distanceMiles,
+          needsAttendant,
+          scheduledPickupAt: dateTime ? new Date(dateTime) : new Date(),
+          roundTrip,
+        })
+      : null;
 
   async function book() {
-    if (!pickupAddress || !dropoffAddress || !dateTime) {
-      Alert.alert("Missing info", "Fill in pickup, drop-off, and date/time.");
+    if (!pickup || !dropoff || !dateTime) {
+      Alert.alert("Missing info", "Pick both addresses from the suggestions and set a pickup time.");
       return;
     }
     setLoading(true);
@@ -46,7 +76,6 @@ export default function NewBookingScreen() {
       return;
     }
 
-    // Look up or create the patient record tied to this user
     const { data: patient } = await supabase
       .from("patients")
       .select("id")
@@ -66,14 +95,28 @@ export default function NewBookingScreen() {
       return;
     }
 
-    const { data: pickup } = await supabase
-      .from("addresses")
-      .insert({ owner_id: user.id, line1: pickupAddress, city: "", state: "NY", postal_code: "" })
-      .select("id").single();
-    const { data: dropoff } = await supabase
-      .from("addresses")
-      .insert({ owner_id: user.id, line1: dropoffAddress, city: "", state: "NY", postal_code: "" })
-      .select("id").single();
+    const insertAddress = async (a: geo.ResolvedAddress) => {
+      const { data } = await supabase
+        .from("addresses")
+        .insert({
+          owner_id: user.id,
+          line1: a.line1,
+          line2: a.line2 ?? null,
+          city: a.city,
+          state: a.state.toUpperCase(),
+          postal_code: a.postalCode,
+          country: a.country.toUpperCase(),
+          latitude: a.latitude,
+          longitude: a.longitude,
+          place_id: a.placeId,
+        })
+        .select("id")
+        .single();
+      return data?.id;
+    };
+
+    const pickupId = await insertAddress(pickup);
+    const dropoffId = await insertAddress(dropoff);
 
     const { error } = await supabase.from("trips").insert({
       patient_id: patient.id,
@@ -81,12 +124,16 @@ export default function NewBookingScreen() {
       trip_type: roundTrip ? "round_trip" : "one_way",
       status: "requested",
       scheduled_pickup_at: new Date(dateTime).toISOString(),
-      pickup_address_id: pickup?.id,
-      dropoff_address_id: dropoff?.id,
+      pickup_address_id: pickupId,
+      dropoff_address_id: dropoffId,
       mobility,
       needs_attendant: needsAttendant,
       payer_type: payerType,
       hcpcs_code: billing.defaultHcpcsForMobility(mobility),
+      loaded_miles: distance?.distanceMiles ?? null,
+      base_fare_cents: estimate?.baseFareCents ?? null,
+      mileage_fare_cents: estimate?.mileageFareCents ?? null,
+      total_fare_cents: estimate?.totalCents ?? null,
     });
 
     setLoading(false);
@@ -101,26 +148,30 @@ export default function NewBookingScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.h1}>New trip</Text>
 
-        <Label>Pickup address</Label>
-        <TextInput
-          style={styles.input}
-          placeholder="123 Main St, City, NY"
-          value={pickupAddress}
-          onChangeText={setPickupAddress}
-        />
+        <View style={{ zIndex: 30 }}>
+          <PlacesAutocomplete
+            label="Pickup address"
+            placeholder="123 Main St"
+            value={pickup}
+            onChange={setPickup}
+          />
+        </View>
+        <View style={{ zIndex: 20, marginTop: 16 }}>
+          <PlacesAutocomplete
+            label="Drop-off address"
+            placeholder="Clinic or hospital"
+            value={dropoff}
+            onChange={setDropoff}
+          />
+        </View>
 
-        <Label>Drop-off address</Label>
-        <TextInput
-          style={styles.input}
-          placeholder="Clinic / hospital address"
-          value={dropoffAddress}
-          onChangeText={setDropoffAddress}
-        />
-
-        <Label>Pickup date & time</Label>
+        <Label>Pickup date &amp; time</Label>
         <TextInput
           style={styles.input}
           placeholder="2026-05-01T09:00"
@@ -163,24 +214,73 @@ export default function NewBookingScreen() {
           ))}
         </View>
 
-        <View style={styles.quoteCard}>
-          <Text style={styles.quoteTitle}>Estimate</Text>
-          <Text style={styles.quotePrice}>{billing.formatCents(estimate.totalCents)}</Text>
-          {estimate.breakdown.map((line, i) => (
-            <Text key={i} style={styles.quoteLine}>{line}</Text>
-          ))}
-          {payerType !== "private_pay" && (
-            <Text style={styles.quoteNote}>
-              For care-plan trips, we bill your payer directly. You&apos;ll see $0 if covered.
-            </Text>
-          )}
-        </View>
+        <QuoteCard
+          distance={distance}
+          loading={distanceLoading}
+          estimate={estimate}
+          payerType={payerType}
+        />
 
         <TouchableOpacity style={styles.primary} onPress={book} disabled={loading}>
           <Text style={styles.primaryText}>{loading ? "Booking…" : "Book trip"}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function QuoteCard({
+  distance,
+  loading,
+  estimate,
+  payerType,
+}: {
+  distance: geo.DistanceResult | null;
+  loading: boolean;
+  estimate: ReturnType<typeof billing.quotePrivatePay> | null;
+  payerType: PayerType;
+}) {
+  if (loading) {
+    return (
+      <View style={styles.quoteCard}>
+        <ActivityIndicator />
+        <Text style={styles.quoteLine}>Calculating route…</Text>
+      </View>
+    );
+  }
+  if (!distance) {
+    return (
+      <View style={[styles.quoteCard, { borderStyle: "dashed" }]}>
+        <Text style={styles.quoteLine}>Pick both addresses to see distance and a fare estimate.</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.quoteCard}>
+      <Text style={styles.quoteLabel}>Route</Text>
+      <Text style={styles.quoteRoute}>
+        {distance.distanceMiles.toFixed(1)} mi · {Math.round(distance.durationSeconds / 60)} min
+      </Text>
+      {distance.source === "haversine" && (
+        <Text style={styles.quoteWarn}>
+          Estimated straight-line distance. Sign in with Google Maps enabled for road data.
+        </Text>
+      )}
+      {estimate && (
+        <>
+          <Text style={[styles.quoteLabel, { marginTop: 8 }]}>Private-pay fare</Text>
+          <Text style={styles.quotePrice}>{billing.formatCents(estimate.totalCents)}</Text>
+          {estimate.breakdown.map((line, i) => (
+            <Text key={i} style={styles.quoteLine}>{line}</Text>
+          ))}
+        </>
+      )}
+      {!estimate && payerType !== "private_pay" && (
+        <Text style={styles.quoteNote}>
+          Care-plan trip — billed to your payer, $0 to you if covered.
+        </Text>
+      )}
+    </View>
   );
 }
 
@@ -225,9 +325,11 @@ const styles = StyleSheet.create({
     marginTop: 20, backgroundColor: "#fff", borderRadius: 12, padding: 16,
     borderWidth: 1, borderColor: "#e2e8f0",
   },
-  quoteTitle: { fontSize: 13, fontWeight: "600", color: "#64748b" },
-  quotePrice: { fontSize: 28, fontWeight: "700", color: "#0f172a", marginVertical: 4 },
+  quoteLabel: { fontSize: 12, fontWeight: "600", color: "#64748b", textTransform: "uppercase" },
+  quoteRoute: { fontSize: 18, fontWeight: "700", color: "#0f172a", marginTop: 2 },
+  quotePrice: { fontSize: 26, fontWeight: "700", color: "#0f172a", marginVertical: 4 },
   quoteLine: { fontSize: 12, color: "#64748b", marginTop: 2 },
+  quoteWarn: { fontSize: 11, color: "#b45309", marginTop: 4 },
   quoteNote: { fontSize: 12, color: "#1158c7", marginTop: 8, fontStyle: "italic" },
   primary: {
     marginTop: 24, backgroundColor: "#1158c7", borderRadius: 14, paddingVertical: 16,
