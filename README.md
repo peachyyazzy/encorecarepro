@@ -83,6 +83,8 @@ pnpm mobile
 1. ~~**Google Places autocomplete** for address input + **Distance Matrix** to compute loaded miles.~~ ✅ Shipped.
 2. ~~**Real pricing quotes** based on actual distance.~~ ✅ Shipped.
 3. ~~**Stripe Checkout** for private-pay trips; webhook updates trip status.~~ ✅ Shipped (web Checkout + mobile PaymentSheet + `payment_intent.*` webhook handler).
+4. ~~**Recurring schedule materializer** — daily cron generates trips up to 30 days ahead from active recurring schedules.~~ ✅ Shipped (`/api/cron/materialize-trips`, scheduled via `vercel.json`; protected by `CRON_SECRET`).
+   - Mobile rider/family UI for self-managed recurring schedules is still TODO; the web facility portal can create them today.
 4. **Driver dispatch app** (same Expo codebase, role-gated) — accept trip, en-route, arrived, start, complete.
 5. **Recurring schedule trip generator** — cron/edge function that materializes upcoming trips from `recurring_schedules`.
 6. **PDF invoice / superbill generator** — server-side React PDF rendering, stored in Supabase Storage.

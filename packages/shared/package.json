@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./billing": "./src/billing/index.ts",
     "./geo": "./src/geo/index.ts",
+    "./scheduling": "./src/scheduling/index.ts",
     "./types": "./src/types/index.ts",
     "./validators": "./src/validators/index.ts"
   },
