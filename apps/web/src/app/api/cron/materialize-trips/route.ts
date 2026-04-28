@@ -90,6 +90,28 @@ async function runMaterialization(): Promise<RunResult> {
       const slots = scheduling.computeSlots(template, horizon);
       const hcpcs = billing.defaultHcpcsForMobility(s.mobility as billing.MobilityType);
 
+      // Round-trip schedules generate one trip row with both legs set;
+      // compute the return-pickup instant for each slot.
+      const returnTimeLocal = s.return_pickup_time_local as string | null;
+      const computeReturn = (slotPickupAt: Date): string | null => {
+        if (s.trip_type !== "round_trip" || !returnTimeLocal) return null;
+        const [hh, mm] = returnTimeLocal.split(":").map((n) => Number.parseInt(n, 10));
+        const local = new Date(slotPickupAt);
+        local.setUTCHours(0, 0, 0, 0);
+        // Build the local-day instant in the schedule's timezone.
+        const slotDateKey = slotPickupAt.toISOString().slice(0, 10);
+        const localISO = `${slotDateKey}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00`;
+        // Re-use the timezone conversion path used for the outbound leg:
+        // construct via the same date-fns-tz import the shared module uses.
+        // Cheap path: trust that pickup and return are on the same date in
+        // the local tz; offset by the difference in minutes.
+        const [outH, outM] = (s.pickup_time_local as string).split(":").map(Number);
+        const diffMinutes = (hh - outH) * 60 + (mm - outM);
+        const returnInstant = new Date(slotPickupAt.getTime() + diffMinutes * 60 * 1000);
+        return returnInstant.toISOString();
+        void localISO; // kept for debug clarity if return-day rolls over
+      };
+
       for (const slot of slots) {
         const { error: insertErr } = await admin.from("trips").insert({
           patient_id: s.patient_id,
@@ -98,6 +120,7 @@ async function runMaterialization(): Promise<RunResult> {
           trip_type: s.trip_type,
           status: "scheduled",
           scheduled_pickup_at: slot.scheduledPickupAt.toISOString(),
+          return_pickup_at: computeReturn(slot.scheduledPickupAt),
           pickup_address_id: s.pickup_address_id,
           dropoff_address_id: s.dropoff_address_id,
           mobility: s.mobility,

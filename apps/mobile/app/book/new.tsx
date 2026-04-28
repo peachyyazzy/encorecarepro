@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, Switch, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Switch, ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import { useStripe } from "@stripe/stripe-react-native";
 import { supabase } from "../../lib/supabase";
 import { fetchDistance, createTripPaymentIntent } from "../../lib/api";
 import PlacesAutocomplete from "../../components/PlacesAutocomplete";
+import DateTimeField from "../../components/DateTimeField";
 import { billing, MOBILITY_LABELS, type PayerType, geo } from "@encorecare/shared";
 
 type Mobility = keyof typeof MOBILITY_LABELS;
@@ -19,7 +20,7 @@ export default function NewBookingScreen() {
 
   const [pickup, setPickup] = useState<geo.ResolvedAddress | null>(null);
   const [dropoff, setDropoff] = useState<geo.ResolvedAddress | null>(null);
-  const [dateTime, setDateTime] = useState("");
+  const [pickupAt, setPickupAt] = useState<Date | null>(null);
   const [mobility, setMobility] = useState<Mobility>("ambulatory");
   const [roundTrip, setRoundTrip] = useState(false);
   const [needsAttendant, setNeedsAttendant] = useState(false);
@@ -37,7 +38,7 @@ export default function NewBookingScreen() {
     fetchDistance(
       { latitude: pickup.latitude, longitude: pickup.longitude },
       { latitude: dropoff.latitude, longitude: dropoff.longitude },
-      dateTime ? new Date(dateTime) : undefined,
+      pickupAt ?? undefined,
     )
       .then((d) => {
         if (!cancelled) setDistance(d);
@@ -51,7 +52,7 @@ export default function NewBookingScreen() {
     return () => {
       cancelled = true;
     };
-  }, [pickup, dropoff, dateTime]);
+  }, [pickup, dropoff, pickupAt]);
 
   const estimate =
     distance && payerType === "private_pay"
@@ -59,13 +60,13 @@ export default function NewBookingScreen() {
           mobility,
           loadedMiles: distance.distanceMiles,
           needsAttendant,
-          scheduledPickupAt: dateTime ? new Date(dateTime) : new Date(),
+          scheduledPickupAt: pickupAt ?? new Date(),
           roundTrip,
         })
       : null;
 
   async function book() {
-    if (!pickup || !dropoff || !dateTime) {
+    if (!pickup || !dropoff || !pickupAt) {
       Alert.alert("Missing info", "Pick both addresses from the suggestions and set a pickup time.");
       return;
     }
@@ -127,7 +128,7 @@ export default function NewBookingScreen() {
         booked_by_user_id: user.id,
         trip_type: roundTrip ? "round_trip" : "one_way",
         status: "requested",
-        scheduled_pickup_at: new Date(dateTime).toISOString(),
+        scheduled_pickup_at: pickupAt.toISOString(),
         pickup_address_id: pickupId,
         dropoff_address_id: dropoffId,
         mobility,
@@ -235,13 +236,14 @@ export default function NewBookingScreen() {
           />
         </View>
 
-        <Label>Pickup date &amp; time</Label>
-        <TextInput
-          style={styles.input}
-          placeholder="2026-05-01T09:00"
-          value={dateTime}
-          onChangeText={setDateTime}
-        />
+        <View style={{ marginTop: 16 }}>
+          <DateTimeField
+            label="Pickup date & time"
+            value={pickupAt}
+            onChange={setPickupAt}
+            minimumDate={new Date()}
+          />
+        </View>
 
         <Label>Mobility</Label>
         <View style={styles.chips}>

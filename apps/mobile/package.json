@@ -18,6 +18,7 @@
     "@encorecare/database": "workspace:*",
     "@encorecare/shared": "workspace:*",
     "@react-native-async-storage/async-storage": "1.23.1",
+    "@react-native-community/datetimepicker": "8.2.0",
     "@stripe/stripe-react-native": "0.41.0",
     "@supabase/supabase-js": "^2.47.10",
     "expo": "~52.0.23",

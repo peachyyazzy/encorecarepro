@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
@@ -10,10 +9,10 @@ interface Profile {
   last_name: string;
   email: string;
   phone: string | null;
+  role: string;
 }
 
 export default function ProfileScreen() {
-  const router = useRouter();
   const { session, signOut } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
 
@@ -21,11 +20,18 @@ export default function ProfileScreen() {
     if (!session) return;
     supabase
       .from("profiles")
-      .select("first_name, last_name, email, phone")
+      .select("first_name, last_name, email, phone, role")
       .eq("id", session.user.id)
       .single()
       .then(({ data }) => setProfile(data as Profile | null));
   }, [session]);
+
+  function confirmSignOut() {
+    Alert.alert("Sign out?", undefined, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign out", style: "destructive", onPress: () => void signOut() },
+    ]);
+  }
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safe}>
@@ -34,15 +40,29 @@ export default function ProfileScreen() {
           {profile ? `${profile.first_name} ${profile.last_name}` : "…"}
         </Text>
         <Text style={styles.meta}>{profile?.email}</Text>
+        {profile?.role && profile.role !== "rider" && (
+          <Text style={styles.roleTag}>{profile.role.replace("_", " ")}</Text>
+        )}
 
         <View style={styles.section}>
-          <Row label="Patients" onPress={() => router.push("/profile/patients")} />
-          <Row label="Insurance & payer info" onPress={() => router.push("/profile/insurance")} />
-          <Row label="Saved addresses" onPress={() => router.push("/profile/addresses")} />
-          <Row label="Payment methods" onPress={() => router.push("/profile/payment")} />
+          <SectionTitle>Account</SectionTitle>
+          <Row label="Email" value={profile?.email ?? "—"} />
+          {profile?.phone && <Row label="Phone" value={profile.phone} />}
         </View>
 
-        <TouchableOpacity style={styles.signOut} onPress={signOut}>
+        <View style={styles.section}>
+          <SectionTitle>Coming soon on mobile</SectionTitle>
+          <Row label="Manage patients" muted />
+          <Row label="Insurance & payer info" muted />
+          <Row label="Saved addresses" muted />
+          <Row label="Payment methods" muted />
+          <Text style={styles.helper}>
+            For now, ride history and trip booking work end-to-end. Patient
+            and insurance management is on the facility web portal.
+          </Text>
+        </View>
+
+        <TouchableOpacity style={styles.signOut} onPress={confirmSignOut}>
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
       </View>
@@ -50,12 +70,16 @@ export default function ProfileScreen() {
   );
 }
 
-function Row({ label, onPress }: { label: string; onPress: () => void }) {
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <Text style={styles.sectionTitle}>{children}</Text>;
+}
+
+function Row({ label, value, muted }: { label: string; value?: string; muted?: boolean }) {
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.chev}>›</Text>
-    </TouchableOpacity>
+    <View style={styles.row}>
+      <Text style={[styles.rowLabel, muted && styles.rowMuted]}>{label}</Text>
+      {value && <Text style={styles.rowValue}>{value}</Text>}
+    </View>
   );
 }
 
@@ -63,17 +87,27 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f8fafc" },
   container: { padding: 20 },
   name: { fontSize: 22, fontWeight: "700", color: "#0f172a", marginTop: 12 },
-  meta: { fontSize: 14, color: "#64748b", marginTop: 4, marginBottom: 24 },
-  section: {
-    backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0",
-    overflow: "hidden",
+  meta: { fontSize: 14, color: "#64748b", marginTop: 4 },
+  roleTag: {
+    alignSelf: "flex-start", marginTop: 8, paddingHorizontal: 8, paddingVertical: 2,
+    fontSize: 11, fontWeight: "600", color: "#1158c7", backgroundColor: "#eef7ff",
+    borderRadius: 4, textTransform: "capitalize", overflow: "hidden",
+  },
+  section: { marginTop: 24 },
+  sectionTitle: {
+    fontSize: 11, fontWeight: "700", color: "#64748b", textTransform: "uppercase",
+    marginBottom: 8, letterSpacing: 0.5,
   },
   row: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    padding: 16, borderBottomWidth: 1, borderBottomColor: "#f1f5f9",
+    backgroundColor: "#fff", paddingHorizontal: 14, paddingVertical: 14,
+    borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 0,
+    borderBottomWidth: 0,
   },
-  rowLabel: { fontSize: 15, color: "#0f172a" },
-  chev: { fontSize: 20, color: "#94a3b8" },
-  signOut: { marginTop: 24, padding: 16, alignItems: "center" },
+  rowLabel: { fontSize: 14, color: "#0f172a" },
+  rowMuted: { color: "#94a3b8" },
+  rowValue: { fontSize: 13, color: "#475569" },
+  helper: { marginTop: 12, fontSize: 12, color: "#64748b", lineHeight: 18 },
+  signOut: { marginTop: 32, padding: 16, alignItems: "center" },
   signOutText: { color: "#dc2626", fontWeight: "600" },
 });

@@ -47,6 +47,9 @@ export async function loadPayableTrip(
   if (trip.payer_type !== "private_pay") {
     return { ok: false, status: 400, error: "trip is not private_pay" };
   }
+  if (trip.payment_status === "paid") {
+    return { ok: false, status: 409, error: "trip already paid" };
+  }
   if (!trip.total_fare_cents || (trip.total_fare_cents as number) < 50) {
     return { ok: false, status: 400, error: "fare not set" };
   }

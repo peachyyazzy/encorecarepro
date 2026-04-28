@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/service";
 import { z } from "zod";
 import { billing, validators } from "@encorecare/shared";
+import { logPhiAccess, requestContext } from "@/lib/audit";
 
 const inputSchema = z.object({
   patientId: z.string().uuid(),
@@ -33,12 +35,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid input", details: String(err) }, { status: 400 });
   }
 
-  // Persist both addresses with full geo data. RLS lets the user insert their own.
+  // Pre-flight: confirm the user can access this patient. Without this the
+  // RLS rejection on insert would surface as a generic error.
+  const { data: accessCheck } = await supabase
+    .from("patients")
+    .select("id")
+    .eq("id", body.patientId)
+    .maybeSingle();
+  if (!accessCheck) {
+    return NextResponse.json({ error: "patient not found or access denied" }, { status: 403 });
+  }
+
+  // If the booker is acting on behalf of a facility, stamp the addresses
+  // with facility_id so other facility staff can see them via RLS.
+  const { data: facilityRow } = await supabase
+    .from("facility_members")
+    .select("facility_id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+  const bookerFacilityId = (facilityRow?.facility_id as string | undefined) ?? null;
+
   const insertAddress = async (a: typeof body.pickup) => {
     const { data, error } = await supabase
       .from("addresses")
       .insert({
         owner_id: user.id,
+        facility_id: bookerFacilityId,
         line1: a.line1,
         line2: a.line2 ?? null,
         city: a.city,
@@ -65,8 +88,8 @@ export async function POST(request: Request) {
 
   const hcpcs = billing.defaultHcpcsForMobility(body.mobility);
 
-  // Compute private-pay fare if that's the payer type. Care-plan trips have
-  // the claim amount set later when we build the 837P (different rate card).
+  // Compute private-pay fare if applicable. Care-plan trips have the claim
+  // amount set later when we build the 837P (different rate card).
   let baseCents = 0;
   let mileageCents = 0;
   let totalCents = 0;
@@ -89,6 +112,7 @@ export async function POST(request: Request) {
     .insert({
       patient_id: body.patientId,
       booked_by_user_id: user.id,
+      booked_by_facility_id: bookerFacilityId,
       trip_type: body.tripType,
       status: "requested",
       scheduled_pickup_at: body.scheduledPickupAt,
@@ -112,6 +136,30 @@ export async function POST(request: Request) {
   if (tripErr || !trip) {
     return NextResponse.json({ error: tripErr?.message ?? "trip insert failed" }, { status: 400 });
   }
+
+  // PHI audit — service-role bypasses RLS so this always lands.
+  const ctx = requestContext(request);
+  await logPhiAccess({
+    actorUserId: user.id,
+    action: "create",
+    resourceType: "trip",
+    resourceId: trip.id as string,
+    details: {
+      patient_id: body.patientId,
+      payer_type: body.payerType,
+      booker_facility_id: bookerFacilityId,
+    },
+    ...ctx,
+  });
+
+  // Mirror as a trip_event for in-app history.
+  const admin = createAdminClient();
+  await admin.from("trip_events").insert({
+    trip_id: trip.id,
+    to_status: "requested",
+    actor_user_id: user.id,
+    note: "Trip requested",
+  });
 
   return NextResponse.json({ tripId: trip.id });
 }
