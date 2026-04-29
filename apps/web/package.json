@@ -13,6 +13,7 @@
     "@encorecare/database": "workspace:*",
     "@encorecare/shared": "workspace:*",
     "@googlemaps/js-api-loader": "^1.16.8",
+    "@react-pdf/renderer": "^4.1.6",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
     "next": "^15.1.3",

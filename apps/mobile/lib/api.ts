@@ -45,3 +45,16 @@ export async function createTripPaymentIntent(tripId: string): Promise<PaymentIn
   }
   return res.json();
 }
+
+export async function generateInvoiceUrl(tripId: string): Promise<string> {
+  const res = await authedFetch("/api/invoices/generate", {
+    method: "POST",
+    body: JSON.stringify({ tripId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `invoice ${res.status}`);
+  }
+  const body = (await res.json()) as { url: string };
+  return body.url;
+}

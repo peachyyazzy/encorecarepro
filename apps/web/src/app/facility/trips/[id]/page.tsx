@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { TRIP_STATUS_LABELS, MOBILITY_LABELS, type TripStatus } from "@encorecare/shared";
 import PayNowButton from "./PayNowButton";
+import InvoiceCard from "./InvoiceCard";
 
 export default async function TripDetailPage({
   params,
@@ -27,6 +28,19 @@ export default async function TripDetailPage({
     .maybeSingle();
 
   if (!trip) notFound();
+
+  // Find any existing invoice for this trip via the line-items join.
+  const { data: invoiceLine } = await supabase
+    .from("invoice_line_items")
+    .select("invoice_id, invoice:invoices(id, invoice_number, status)")
+    .eq("trip_id", id)
+    .limit(1)
+    .maybeSingle();
+  const invoice = invoiceLine
+    ? Array.isArray(invoiceLine.invoice)
+      ? invoiceLine.invoice[0]
+      : invoiceLine.invoice
+    : null;
 
   const patient = Array.isArray(trip.patient) ? trip.patient[0] : trip.patient;
   const pickup = Array.isArray(trip.pickup) ? trip.pickup[0] : trip.pickup;
@@ -106,6 +120,15 @@ export default async function TripDetailPage({
             <p className="text-sm text-slate-700">{trip.special_instructions as string}</p>
           </Card>
         )}
+      </section>
+
+      <section className="mt-6">
+        <InvoiceCard
+          tripId={trip.id as string}
+          invoiceId={(invoice?.id as string | null | undefined) ?? null}
+          invoiceNumber={(invoice?.invoice_number as string | null | undefined) ?? null}
+          invoiceStatus={(invoice?.status as string | null | undefined) ?? null}
+        />
       </section>
     </div>
   );

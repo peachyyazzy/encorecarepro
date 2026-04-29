@@ -86,7 +86,7 @@ pnpm mobile
 4. ~~**Recurring schedule materializer** — daily cron generates trips up to 30 days ahead from active recurring schedules.~~ ✅ Shipped (`/api/cron/materialize-trips`, scheduled via `vercel.json`; protected by `CRON_SECRET`).
    - Mobile rider/family UI for self-managed recurring schedules is still TODO; the web facility portal can create them today.
 5. ~~**Driver dispatch + driver app** — admin assigns drivers to trips; drivers see their daily manifest and progress through the trip state machine (en route, arrived, in progress, dropped off, completed).~~ ✅ Shipped (`/admin/dispatch` board; role-gated mobile manifest tab; `/api/trips/[id]/status` + `/api/trips/[id]/assign` with shared FSM in `@encorecare/shared/trips`).
-6. **PDF invoice / superbill generator** — server-side React PDF rendering, stored in Supabase Storage.
+6. ~~**PDF invoice / superbill generator** — server-side React PDF (`@react-pdf/renderer`) rendering, stored in a private Supabase Storage bucket, signed-URL downloads, auto-generated when a trip transitions to `completed`.~~ ✅ Shipped (`/api/invoices/generate`, `/api/invoices/[id]/download`, web Trip Detail download card, mobile "Get receipt" button).
 7. **Clearinghouse integration** — map `claims` + `claim_service_lines` rows to 837P EDI via Office Ally / Availity / Waystar API.
 8. **Real-time trip tracking** — Supabase Realtime channel per trip; push location updates to rider.
 9. **Push notifications** (Expo Push) — driver assigned, en route, arrived, completed.

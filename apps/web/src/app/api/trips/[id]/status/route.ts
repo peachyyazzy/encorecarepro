@@ -4,6 +4,7 @@ import { trips as tripFsm, type TripStatus, type UserRole } from "@encorecare/sh
 import { getAuthUser } from "@/lib/supabase/auth-user";
 import { createAdminClient } from "@/lib/supabase/service";
 import { logPhiAccess, requestContext } from "@/lib/audit";
+import { generateInvoiceForTrip } from "@/lib/invoices";
 
 function corsHeaders() {
   return {
@@ -140,6 +141,15 @@ export async function POST(
     details: { from: fromStatus, to: toStatus },
     ...requestContext(request),
   });
+
+  // Auto-generate the invoice PDF when a trip completes. Fire-and-forget —
+  // a generation failure shouldn't block the driver's completion call. The
+  // user can also re-trigger it from the trip detail page.
+  if (toStatus === "completed") {
+    generateInvoiceForTrip(tripId, { actorUserId: authed.userId }).catch((err) => {
+      console.error("[invoice] auto-generate failed for trip", tripId, err);
+    });
+  }
 
   return NextResponse.json({ ok: true, status: toStatus }, { headers: corsHeaders() });
 }
